@@ -1,0 +1,148 @@
+<job id="PopulateActiveSetup">
+	<script language="VBScript" src="ZTIUtility.vbs"/>
+	<script language="VBScript">
+
+'//########################
+'//  This script by Diagg/Zany & OpenEyes.
+'//   http://zany-openeyes.blogspot.com/
+'//   http:///www.osd-couture.com
+'// 
+'//  Version : 4.0
+'//  Release Date : 24/03/2013
+'//  Latest Update : 15/10/2014
+'//  Usage: cscript ZTIPopulateActiveSetup.wsf [ /debug:true]
+'//
+'//  History: 
+'//			   04/05/2015 - 4.0   - Added support for .ps1 files
+'//								  - Added support for .txt files	
+'//            15/10/2014 - 3.0.1 - Historical release
+'//
+'//########################	
+
+	
+Option Explicit
+RunNewInstance
+
+
+'//########################
+'//  Main Class
+'//########################
+
+Class ZTIPopulateActiveSetup
+
+    '//########################
+    '//  Global constant and variable declarations
+    '//########################
+
+    Dim iRetVal
+	    
+    '//########################
+    '//  Constructor to initialize needed global objects
+    '//########################
+
+    Private Sub Class_Initialize
+
+    End Sub
+    '//########################
+    '//  Main routine
+    '//########################
+
+    Function Main
+	
+		Dim oActiveSetupPath, oActiveSetupRegKey, oActiveFolderContent,oActiveFilesItems, oActiveItem, oActiveSetupRegKeyFinal
+		Dim oHKLM, oReg, oTxtCmd, DirectCmdFile
+	
+	
+		'##==Variables
+		oHKLM = &H80000002
+		
+		oActiveSetupPath = oEnv ("AllUsersProfile") & "\Active-Setup"
+		oActiveSetupRegKey = "SOFTWARE\Microsoft\Active Setup\Installed Components\"
+		
+		Set oReg=GetObject("winmgmts:root\default:StdRegProv")
+
+		'##==Active	Setup core routine
+	
+		oLogging.CreateEntry "Processing Active-setup entries !!! ", LogTypeInfo
+		
+		'verfiy  c:\ProgramData\active-setup  exist and is not empty
+		If oFSO.FolderExists(oActiveSetupPath) then
+			Set oActiveFolderContent = oFSO.GetFolder(oActiveSetupPath)    
+			
+			If oActiveFolderContent.Files.Count <> 0 Then 
+		
+				'process folder content
+				Set oActiveFilesItems = oActiveFolderContent.Files
+				
+				For each oActiveItem in oActiveFilesItems
+					oActiveSetupRegKeyFinal = oActiveSetupRegKey & "ZTIMDT-" & Int((Second(Now())* Rnd)*1000) & "-" & Ucase(oActiveItem.name)
+					oReg.CreateKey oHKLM, oActiveSetupRegKeyFinal
+					
+					Select case Lcase(oFSO.GetExtensionName(oActiveItem.name))
+
+						' if Reg File
+						case "reg"
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "reg.exe Import " & """" & oActiveItem.Path & """"
+
+							
+						' if vbs
+						case "vbs","js","wsf"
+							' if last letter of the file name is W, then use Wscpit engine else use Cscript
+							If Ucase(Right(Mid(oActiveItem.name,1,len(oActiveItem.name)-4), 1)) = "W" Then 
+								oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "Wscript.exe " & """" & oActiveItem.Path & """"
+							Else
+								oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "Cscript.exe " & """" & oActiveItem.Path & """"
+							End If	
+
+							
+						'if hta
+						case "hta"
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "mshta.exe " & """" & oActiveItem.Path & """"
+
+						
+						'if exe
+						case "exe"
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", """" & oActiveItem.Path & """"
+						
+						
+						'if cmd/bat 
+						case "cmd", "bat"
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "cmd.exe /C " & """" & oActiveItem.Path & """"
+							
+						'if txt
+						case "txt"
+							Set DirectCmdFile = oFso.OpenTextFile(oActiveItem.Path, 1)
+							oTxtCmd = DirectCmdFile.Readline
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", """" & oTxtCmd & """"
+							
+						'If ps1	
+						case "ps1"
+							oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "StubPath", "Powershell.exe -NoProfile -ExecutionPolicy ByPass -WindowStyle Hidden -file " & """" & oActiveItem.Path & """"
+
+					End select 	
+					
+					oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "", Mid(oActiveItem.name, 1, len(oActiveItem.name)-4)
+					oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "ComponentID", oActiveItem.name
+					oReg.SetStringValue oHKLM, oActiveSetupRegKeyFinal, "Version", "1"
+					oLogging.CreateEntry "Added : " & oActiveItem.Path & " to Active Setup at path : " & oActiveSetupRegKeyFinal, LogTypeInfo
+				
+				Next
+			
+			Else
+				oLogging.CreateEntry "No files found to populate Active Setup. Nothing will be populated !!!", LogTypeInfo
+			End If	
+
+		Else
+			oLogging.CreateEntry "No Active-Setup folder found in ProgramData. Nothing will be populated !!!", LogTypeInfo
+		End If	
+
+		
+		oLogging.CreateEntry "Active Setup population finished successfuly !!", LogTypeInfo
+	
+	End Function
+
+
+End Class
+
+   </script>
+</job>
